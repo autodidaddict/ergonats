@@ -1,7 +1,6 @@
 package eventsourcing
 
 import (
-	"fmt"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go"
@@ -39,7 +38,6 @@ func NewCloudEvent(eventType string, entityKey string, rawData interface{}) clou
 	cloudevent.SetDataContentType(cloudevents.ApplicationJSON)
 	_ = cloudevent.SetData(rawData)
 
-	fmt.Printf("%+v\n", cloudevent)
 	return cloudevent
 
 }

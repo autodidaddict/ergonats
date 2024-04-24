@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/ergo-services/ergo"
@@ -21,28 +22,27 @@ func main() {
 
 	js, _ := jetstream.New(nc)
 
-	_, _ = js.CreateStream(ctx, jetstream.StreamConfig{
+	_, _ = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     bankStream,
 		Subjects: []string{"ergonats.events.*"},
 	})
 
-	// js.Publish(ctx, "events.1", nil)
-	// js.Publish(ctx, "events.2", nil)
-	// js.Publish(ctx, "events.3", nil)
+	logger := slog.Default()
 
-	fmt.Println("Starting node")
+	logger.Info("Starting node")
 	node_abc, _ := ergo.StartNode("node_abc@localhost", "cookies", node.Options{})
-	fmt.Println("Node started")
+	logger.Info("Node started")
 
 	accountAggregate := &BankAccountAggregate{}
 	p, err := node_abc.Spawn("account_aggregate", gen.ProcessOptions{}, accountAggregate,
 		nc,
+		logger,
 	)
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
 	}
-	fmt.Printf("Spawned Bank account aggregate, pid %s\n", p.Info().PID)
+	logger.Info("Spawned Bank account aggregate", slog.Any("pid", p.Info().PID))
 
 	node_abc.Wait()
 

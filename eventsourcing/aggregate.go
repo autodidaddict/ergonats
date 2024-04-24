@@ -3,6 +3,7 @@ package eventsourcing
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/autodidaddict/ergonats"
@@ -11,6 +12,7 @@ import (
 	"github.com/ergo-services/ergo/gen"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/nats-io/nats.go/micro"
 )
 
 type AggregateBehavior interface {
@@ -33,7 +35,10 @@ type AggregateProcess struct {
 }
 
 type AggregateOptions struct {
+	Logger               *slog.Logger
 	Connection           *nats.Conn
+	ServiceVersion       string
+	SubjectPrefix        string
 	StreamName           string
 	AcceptedCommands     []string
 	StateStoreBucketName string
@@ -43,8 +48,6 @@ type AggregateOptions struct {
 func (a *Aggregate) InitPullConsumer(
 	process *ergonats.PullConsumerProcess,
 	args ...etf.Term) (*ergonats.PullConsumerOptions, error) {
-
-	fmt.Println("init pullconsumer")
 
 	aggregateProcess := &AggregateProcess{
 		PullConsumerProcess: *process,
@@ -60,21 +63,40 @@ func (a *Aggregate) InitPullConsumer(
 	if err != nil {
 		return nil, err
 	}
+	if aggregateOpts.ServiceVersion == "" {
+		aggregateOpts.ServiceVersion = "0.0.1"
+	}
+	if aggregateOpts.Logger == nil {
+		aggregateOpts.Logger = slog.Default()
+	}
 	aggregateProcess.options = aggregateOpts
 	process.State = aggregateProcess
 
+	s, err := micro.AddService(aggregateOpts.Connection, micro.Config{
+		Name:        aggregateOpts.AggregateName,
+		Version:     aggregateOpts.ServiceVersion,
+		Description: fmt.Sprintf("%s Aggregate Service", aggregateOpts.AggregateName),
+		QueueGroup:  aggregateOpts.AggregateName,
+	})
+	if err != nil {
+		return nil, gen.ServerStatusStop
+	}
+	tokens := strings.Split(aggregateOpts.SubjectPrefix, ".")
+	var g micro.Group
+	g = s.AddGroup(tokens[0])
+	for _, token := range tokens[1:] {
+		g = g.AddGroup(token)
+	}
+
 	for _, cmdType := range aggregateOpts.AcceptedCommands {
-		_, err := aggregateOpts.Connection.Subscribe(fmt.Sprintf("ergonats.cmd.%s", cmdType),
-			a.handleCommandMessage(aggregateProcess),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to subscribe to command type '%s': %s", cmdType, err)
-		}
+		g.AddEndpoint(cmdType, micro.HandlerFunc(a.handleCommandMessage(cmdType, aggregateProcess)))
 	}
 
 	consumerName := fmt.Sprintf("AGG_%s", aggregateOpts.AggregateName)
 
+	aggregateOpts.Logger.Info("Aggregate initialized", slog.String("name", aggregateOpts.AggregateName))
 	return &ergonats.PullConsumerOptions{
+		Logger:     aggregateOpts.Logger,
 		Connection: aggregateOpts.Connection,
 		StreamName: aggregateOpts.StreamName,
 		NatsConsumerConfig: jetstream.ConsumerConfig{
@@ -86,48 +108,35 @@ func (a *Aggregate) InitPullConsumer(
 	}, nil
 }
 
-func (a *Aggregate) handleCommandMessage(p *AggregateProcess) func(*nats.Msg) {
-	return func(msg *nats.Msg) {
-		tokens := strings.Split(msg.Subject, ".")
-		// ergonats.cmd.{type}
-		if len(tokens) != 3 {
-			reply := CommandReply{
-				Accepted: false,
-				Message:  "Bad request",
-			}
-			bytes, _ := json.Marshal(&reply)
-			_ = msg.Respond(bytes)
-			return
-		}
-		commandType := tokens[2]
-
+func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess) func(micro.Request) {
+	return func(request micro.Request) {
 		behavior := p.Behavior().(AggregateBehavior)
 
-		entityKey := msg.Header.Get(headerEntityKey)
+		entityKey := request.Headers().Get(headerEntityKey)
 		if len(strings.TrimSpace(entityKey)) == 0 {
 			reply := CommandReply{
 				Accepted: false,
 				Message:  "Bad request - no entity key supplied",
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = msg.Respond(bytes)
+			_ = request.Respond(bytes)
 			return
 		}
 
 		cmd := Command{
 			Type: commandType,
-			Data: msg.Data,
+			Data: request.Data(),
 		}
 
 		existingState, err := LoadState(p.options.Connection, &p.options, entityKey)
 		if err != nil {
-			fmt.Printf("%+v\n", err)
+			p.options.Logger.Error("Failed to load aggregate state", slog.Any("error", err))
 			reply := CommandReply{
 				Accepted: false,
 				Message:  "Failed to load aggregate state",
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = msg.Respond(bytes)
+			_ = request.Respond(bytes)
 			return
 		}
 
@@ -138,7 +147,7 @@ func (a *Aggregate) handleCommandMessage(p *AggregateProcess) func(*nats.Msg) {
 				Message:  fmt.Sprintf("Command rejected: %s", err),
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = msg.Respond(bytes)
+			_ = request.Respond(bytes)
 			return
 		}
 		err = a.writeEvents(p, events)
@@ -148,7 +157,7 @@ func (a *Aggregate) handleCommandMessage(p *AggregateProcess) func(*nats.Msg) {
 				Message:  "Event write failure",
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = msg.Respond(bytes)
+			_ = request.Respond(bytes)
 		}
 
 		reply := CommandReply{
@@ -156,12 +165,13 @@ func (a *Aggregate) handleCommandMessage(p *AggregateProcess) func(*nats.Msg) {
 			Message:  "Command accepted",
 		}
 		bytes, _ := json.Marshal(&reply)
-		_ = msg.Respond(bytes)
+		_ = request.Respond(bytes)
 	}
 }
 
 func (a *Aggregate) HandleMessage(process *ergonats.PullConsumerProcess, msg jetstream.Msg) error {
-	fmt.Printf("Receiving message from consumer: %s\n", msg.Subject())
+	process.Options().Logger.Debug("Receiving message from consumer", slog.String("subject", msg.Subject()))
+
 	var event cloudevents.Event
 	err := json.Unmarshal(msg.Data(), &event)
 	if err != nil {

@@ -3,6 +3,7 @@ package ergonats
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/ergo-services/ergo/etf"
 	"github.com/ergo-services/ergo/gen"
@@ -22,6 +23,7 @@ type PullConsumer struct {
 }
 
 type PullConsumerOptions struct {
+	Logger             *slog.Logger
 	Connection         *nats.Conn
 	StreamName         string
 	NatsConsumerConfig jetstream.ConsumerConfig
@@ -34,13 +36,16 @@ type PullConsumerProcess struct {
 	behavior PullConsumerBehavior
 }
 
+func (pcp *PullConsumerProcess) Options() *PullConsumerOptions {
+	return &pcp.options
+}
+
 // gen.Server callbacks
 
 func (c *PullConsumer) Init(
 	process *gen.ServerProcess,
 	args ...etf.Term) error {
 
-	fmt.Printf("Initializing pull consumer, %s (%s)\n", process.Info().PID, process.Name())
 	consumerProcess := &PullConsumerProcess{
 		ServerProcess: *process,
 	}
@@ -60,6 +65,12 @@ func (c *PullConsumer) Init(
 	if err := consumerOpts.validate(); err != nil {
 		return err
 	}
+	if consumerOpts.Logger == nil {
+		consumerOpts.Logger = slog.Default()
+	}
+
+	slog.Info("Initializing pull consumer", slog.Any("pid", process.Info().PID),
+		slog.String("process_name", process.Name()))
 
 	// Initialize the Nats consumer based on consumerOpts
 	go consumerProcess.startPulling()

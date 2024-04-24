@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log/slog"
 
 	es "github.com/autodidaddict/ergonats/eventsourcing"
 	cloudevents "github.com/cloudevents/sdk-go"
@@ -19,14 +19,24 @@ func (b *BankAccountAggregate) InitAggregate(
 	process *es.AggregateProcess,
 	args ...etf.Term) (es.AggregateOptions, error) {
 
-	fmt.Println("Initializing bank account aggregate")
+	var logger *slog.Logger
+	if len(args) < 2 {
+		logger = slog.Default()
+	} else {
+		logger = args[1].(*slog.Logger)
+	}
+
+	logger.Info("Initializing bank account aggregate")
 
 	return es.AggregateOptions{
-		Connection: args[0].(*nats.Conn),
-		StreamName: bankStream,
+		Connection:     args[0].(*nats.Conn),
+		Logger:         logger,
+		StreamName:     bankStream,
+		ServiceVersion: "0.1.0",
 		AcceptedCommands: []string{
 			commandTypeCreateAccount,
 		},
+		SubjectPrefix:        "examples.bank.cmds",
 		StateStoreBucketName: "agg_bankaccount",
 		AggregateName:        "bankaccount",
 	}, nil
@@ -37,7 +47,6 @@ func (b *BankAccountAggregate) ApplyEvent(
 	state es.AggregateState,
 	event cloudevents.Event) (es.AggregateState, error) {
 
-	// TODO: update internal state based on event
 	switch event.Type() {
 	case eventTypeAccountCreated:
 		var evt AccountCreatedEvent
@@ -50,7 +59,6 @@ func (b *BankAccountAggregate) ApplyEvent(
 			Balance:   evt.Balance,
 		}
 		state.Key = evt.AccountID
-		return state, nil
 	}
 
 	return state, nil
