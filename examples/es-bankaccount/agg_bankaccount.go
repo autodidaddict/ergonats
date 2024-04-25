@@ -36,7 +36,8 @@ func (b *BankAccountAggregate) InitAggregate(
 		AcceptedCommands: []string{
 			commandTypeCreateAccount,
 		},
-		SubjectPrefix:        "examples.bank.cmds",
+		CommandSubjectPrefix: "examples.bank.cmds",
+		EventSubjectPrefix:   "examples.bank.events",
 		StateStoreBucketName: "agg_bankaccount",
 		AggregateName:        "bankaccount",
 	}, nil

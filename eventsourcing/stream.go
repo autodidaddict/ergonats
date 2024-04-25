@@ -11,7 +11,10 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 )
 
-func writeEvents(conn *nats.Conn, streamName string, events []cloudevents.Event) error {
+func writeEvents(conn *nats.Conn,
+	streamName string,
+	eventSubjectPrefix string,
+	events []cloudevents.Event) error {
 	var err error
 
 	ctx, cancelF := context.WithTimeout(context.Background(), bucketTimeout)
@@ -27,7 +30,7 @@ func writeEvents(conn *nats.Conn, streamName string, events []cloudevents.Event)
 		if errors.Is(err, jetstream.ErrStreamNotFound) {
 			_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 				Name:     streamName,
-				Subjects: []string{"ergonats.events.*"},
+				Subjects: []string{fmt.Sprintf("%s.*", eventSubjectPrefix)},
 			})
 			if err != nil {
 				return err
@@ -39,7 +42,7 @@ func writeEvents(conn *nats.Conn, streamName string, events []cloudevents.Event)
 
 	for _, event := range events {
 		bytes, _ := json.Marshal(event)
-		err = conn.Publish(fmt.Sprintf("ergonats.events.%s", event.Type()), bytes)
+		err = conn.Publish(fmt.Sprintf("%s.%s", eventSubjectPrefix, event.Type()), bytes)
 		if err != nil {
 			return err
 		}

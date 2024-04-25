@@ -132,12 +132,18 @@ func (process *PullConsumerProcess) startPulling() {
 
 	stream, err := js.Stream(ctx, streamName)
 	if err != nil {
-		// dispatch error
+		process.options.Logger.Error("Failed to attach to stream",
+			slog.String("stream", streamName),
+			slog.Any("error", err),
+		)
 	}
 
 	cons, err := stream.CreateOrUpdateConsumer(ctx, process.options.NatsConsumerConfig)
 	if err != nil {
-		// dispatch error
+		process.options.Logger.Error("Failed to create or locate consumer",
+			slog.String("consumer", process.options.NatsConsumerConfig.Name),
+			slog.Any("error", err),
+		)
 	}
 
 	_, _ = cons.Consume(func(msg jetstream.Msg) {

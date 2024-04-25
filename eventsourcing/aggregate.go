@@ -38,7 +38,8 @@ type AggregateOptions struct {
 	Logger               *slog.Logger
 	Connection           *nats.Conn
 	ServiceVersion       string
-	SubjectPrefix        string
+	CommandSubjectPrefix string
+	EventSubjectPrefix   string
 	StreamName           string
 	AcceptedCommands     []string
 	StateStoreBucketName string
@@ -81,7 +82,7 @@ func (a *Aggregate) InitPullConsumer(
 	if err != nil {
 		return nil, gen.ServerStatusStop
 	}
-	tokens := strings.Split(aggregateOpts.SubjectPrefix, ".")
+	tokens := strings.Split(aggregateOpts.CommandSubjectPrefix, ".")
 	var g micro.Group
 	g = s.AddGroup(tokens[0])
 	for _, token := range tokens[1:] {
@@ -211,5 +212,8 @@ func (a *Aggregate) HandleMessage(process *ergonats.PullConsumerProcess, msg jet
 }
 
 func (a *Aggregate) writeEvents(process *AggregateProcess, events []cloudevents.Event) error {
-	return writeEvents(process.options.Connection, process.options.StreamName, events)
+	return writeEvents(process.options.Connection,
+		process.options.StreamName,
+		process.options.EventSubjectPrefix,
+		events)
 }
