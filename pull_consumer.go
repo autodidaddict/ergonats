@@ -69,7 +69,7 @@ func (c *PullConsumer) Init(
 		consumerOpts.Logger = slog.Default()
 	}
 
-	slog.Info("Initializing pull consumer", slog.Any("pid", process.Info().PID),
+	consumerOpts.Logger.Info("Initializing pull consumer", slog.Any("pid", process.Info().PID),
 		slog.String("process_name", process.Name()))
 
 	// Initialize the Nats consumer based on consumerOpts
