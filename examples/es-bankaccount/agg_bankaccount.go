@@ -38,7 +38,7 @@ func (b *BankAccountAggregate) InitAggregate(
 		},
 		CommandSubjectPrefix: "examples.bank.cmds",
 		EventSubjectPrefix:   "examples.bank.events",
-		StateStoreBucketName: "agg_bankaccount",
+		StateStoreBucketName: "AGG_bankaccount",
 		AggregateName:        "bankaccount",
 		Middleware: []es.AggregateMiddleware{
 			authenticator{},
@@ -58,11 +58,15 @@ func (b *BankAccountAggregate) ApplyEvent(
 		if err != nil {
 			return state, err
 		}
+		// Note that state.Key is not modified here as that comes from
+		// the header on the stored message/event.
+
+		// WARNING: if the value of x-ergonats-entity-key doesn't match _exactly_ the
+		// AccountID below, your app won't behave the way you expect
 		state.Data = BankAccountState{
 			AccountID: evt.AccountID,
 			Balance:   evt.Balance,
 		}
-		state.Key = evt.AccountID
 	}
 
 	return state, nil

@@ -195,7 +195,7 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 }
 
 func (a *Aggregate) HandleMessage(process *ergonats.PullConsumerProcess, msg jetstream.Msg) error {
-	process.Options().Logger.Debug("Receiving message from consumer", slog.String("subject", msg.Subject()))
+	process.Options().Logger.Info("Receiving message from consumer", slog.String("subject", msg.Subject()))
 
 	var event cloudevents.Event
 	err := json.Unmarshal(msg.Data(), &event)
@@ -231,7 +231,6 @@ func (a *Aggregate) HandleMessage(process *ergonats.PullConsumerProcess, msg jet
 	}
 
 	_ = msg.Ack()
-	fmt.Println("Received message on", msg.Subject())
 	return nil
 }
 
