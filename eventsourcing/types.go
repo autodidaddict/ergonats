@@ -19,8 +19,9 @@ type AggregateState struct {
 }
 
 type Command struct {
-	Type string `json:"type"`
-	Data []byte `json:"-"`
+	Type     string            `json:"type"`
+	Data     []byte            `json:"-"`
+	Metadata map[string]string `json:"-"`
 }
 
 type CommandReply struct {

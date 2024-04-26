@@ -44,6 +44,11 @@ type AggregateOptions struct {
 	AcceptedCommands     []string
 	StateStoreBucketName string
 	AggregateName        string
+	Middleware           []AggregateMiddleware
+}
+
+type AggregateMiddleware interface {
+	ExecMiddleware(*AggregateState, *Command) error
 }
 
 func (a *Aggregate) InitPullConsumer(
@@ -125,8 +130,15 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 		}
 
 		cmd := Command{
-			Type: commandType,
-			Data: request.Data(),
+			Type:     commandType,
+			Data:     request.Data(),
+			Metadata: make(map[string]string),
+		}
+
+		hdr := request.Headers()
+		h := map[string][]string(hdr)
+		for k, v := range h {
+			cmd.Metadata[k] = v[0]
 		}
 
 		existingState, err := LoadState(p.options.Connection, &p.options, entityKey)
@@ -135,6 +147,18 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 			reply := CommandReply{
 				Accepted: false,
 				Message:  "Failed to load aggregate state",
+			}
+			bytes, _ := json.Marshal(&reply)
+			_ = request.Respond(bytes)
+			return
+		}
+
+		err = runMiddleware(p.options.Middleware, existingState, &cmd)
+		if err != nil {
+			p.options.Logger.Error("Middleware execution failed", slog.Any("error", err))
+			reply := CommandReply{
+				Accepted: false,
+				Message:  err.Error(),
 			}
 			bytes, _ := json.Marshal(&reply)
 			_ = request.Respond(bytes)
@@ -216,4 +240,21 @@ func (a *Aggregate) writeEvents(process *AggregateProcess, events []cloudevents.
 		process.options.StreamName,
 		process.options.EventSubjectPrefix,
 		events)
+}
+
+func runMiddleware(middlewares []AggregateMiddleware, state *AggregateState, cmd *Command) error {
+	if middlewares == nil {
+		return nil
+	}
+	// in this chain, state and command can both be modified
+
+	for _, mw := range middlewares {
+		err := mw.ExecMiddleware(state, cmd)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+
 }

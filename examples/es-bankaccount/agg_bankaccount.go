@@ -40,6 +40,9 @@ func (b *BankAccountAggregate) InitAggregate(
 		EventSubjectPrefix:   "examples.bank.events",
 		StateStoreBucketName: "agg_bankaccount",
 		AggregateName:        "bankaccount",
+		Middleware: []es.AggregateMiddleware{
+			authenticator{},
+		},
 	}, nil
 }
 
@@ -101,4 +104,18 @@ func createAccount(cmd es.Command, state *es.AggregateState) ([]cloudevents.Even
 	return []cloudevents.Event{
 		es.NewCloudEvent(eventTypeAccountCreated, createCommand.AccountID, accountCreated),
 	}, nil
+}
+
+type authenticator struct{}
+
+func (a authenticator) ExecMiddleware(state *es.AggregateState, cmd *es.Command) error {
+	username, ok := cmd.Metadata["x-username"]
+	if !ok {
+		return errors.New("username must be supplied")
+	}
+	if username == "unauthorized" {
+		return errors.New("unauthorized user")
+	}
+
+	return nil
 }
