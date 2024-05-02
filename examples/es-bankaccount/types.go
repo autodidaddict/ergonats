@@ -1,11 +1,13 @@
 package main
 
 const (
-	commandCreateAccount = "create_account"
-	bankStream           = "BANK_EVENTS"
+	bankStream = "BANK_EVENTS"
 
 	commandTypeCreateAccount = "create_account"
-	eventTypeAccountCreated  = "account_created"
+	commandTypeDeposit       = "deposit"
+
+	eventTypeAccountCreated = "account_created"
+	eventTypeFundsDeposited = "funds_deposited"
 )
 
 type BankAccountState struct {
@@ -16,6 +18,16 @@ type BankAccountState struct {
 type CreateAccountCommand struct {
 	AccountID      string `json:"account_id"`
 	InitialBalance uint64 `json:"initial_balance"`
+}
+
+type DepositFundsCommand struct {
+	AccountID string `json:"account_id"`
+	Amount    uint64 `json:"amount"`
+}
+
+type FundsDepositedEvent struct {
+	AccountID string `json:"account_id"`
+	Amount    uint64 `json:"amount"`
 }
 
 type AccountCreatedEvent struct {

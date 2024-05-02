@@ -35,6 +35,7 @@ func (b *BankAccountAggregate) InitAggregate(
 		ServiceVersion: "0.1.0",
 		AcceptedCommands: []string{
 			commandTypeCreateAccount,
+			commandTypeDeposit,
 		},
 		CommandSubjectPrefix: "examples.bank.cmds",
 		EventSubjectPrefix:   "examples.bank.events",
@@ -67,6 +68,21 @@ func (b *BankAccountAggregate) ApplyEvent(
 			AccountID: evt.AccountID,
 			Balance:   evt.Balance,
 		}
+	case eventTypeFundsDeposited:
+		var evt FundsDepositedEvent
+		err := event.DataAs(&evt)
+		if err != nil {
+			return state, err
+		}
+		var bankState BankAccountState
+		bytes, _ := json.Marshal(state.Data)
+		err = json.Unmarshal(bytes, &bankState)
+		if err != nil {
+			return state, err
+		}
+		bankState.Balance += evt.Amount
+
+		state.Data = bankState
 	}
 
 	return state, nil
@@ -78,11 +94,34 @@ func (b *BankAccountAggregate) HandleCommand(
 	cmd es.Command) ([]cloudevents.Event, error) {
 
 	switch cmd.Type {
-	case commandCreateAccount:
+	case commandTypeCreateAccount:
 		return createAccount(cmd, &state)
+	case commandTypeDeposit:
+		return deposit(cmd, state)
 	default:
 		return nil, errors.New("unexpected command type")
 	}
+}
+
+func deposit(cmd es.Command, state es.AggregateState) ([]cloudevents.Event, error) {
+	if state.Version == 0 {
+		return []cloudevents.Event{}, errors.New("can't deposit into a non-existent account")
+	}
+
+	var depositCommand DepositFundsCommand
+	err := json.Unmarshal(cmd.Data, &depositCommand)
+	if err != nil {
+		return nil, err
+	}
+
+	fundsDeposited := FundsDepositedEvent{
+		AccountID: depositCommand.AccountID,
+		Amount:    depositCommand.Amount,
+	}
+
+	return []cloudevents.Event{
+		es.NewCloudEvent(eventTypeFundsDeposited, depositCommand.AccountID, fundsDeposited),
+	}, nil
 }
 
 func createAccount(cmd es.Command, state *es.AggregateState) ([]cloudevents.Event, error) {
