@@ -79,7 +79,7 @@ func (a *Aggregate) InitPullConsumer(
 	process.State = aggregateProcess
 
 	s, err := micro.AddService(aggregateOpts.Connection, micro.Config{
-		Name:        aggregateOpts.AggregateName,
+		Name:        fmt.Sprintf("aggregate-%s", aggregateOpts.AggregateName),
 		Version:     aggregateOpts.ServiceVersion,
 		Description: fmt.Sprintf("%s Aggregate Service", aggregateOpts.AggregateName),
 		QueueGroup:  aggregateOpts.AggregateName,
@@ -122,10 +122,10 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 		if len(strings.TrimSpace(entityKey)) == 0 {
 			reply := CommandReply{
 				Accepted: false,
-				Message:  "Bad request - no entity key supplied",
+				Message:  "No entity key supplied",
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = request.Respond(bytes)
+			_ = request.Error("400", reply.Message, bytes)
 			return
 		}
 
@@ -149,7 +149,7 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 				Message:  "Failed to load aggregate state",
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = request.Respond(bytes)
+			_ = request.Error("500", reply.Message, bytes)
 			return
 		}
 
@@ -161,7 +161,7 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 				Message:  err.Error(),
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = request.Respond(bytes)
+			_ = request.Error("500", reply.Message, bytes)
 			return
 		}
 
@@ -172,7 +172,7 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 				Message:  fmt.Sprintf("Command rejected: %s", err),
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = request.Respond(bytes)
+			_ = request.Error("400", reply.Message, bytes)
 			return
 		}
 		err = a.writeEvents(p, events)
@@ -182,7 +182,7 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 				Message:  "Event write failure",
 			}
 			bytes, _ := json.Marshal(&reply)
-			_ = request.Respond(bytes)
+			_ = request.Error("500", reply.Message, bytes)
 		}
 
 		reply := CommandReply{
@@ -195,37 +195,55 @@ func (a *Aggregate) handleCommandMessage(commandType string, p *AggregateProcess
 }
 
 func (a *Aggregate) HandleMessage(process *ergonats.PullConsumerProcess, msg jetstream.Msg) error {
-	process.Options().Logger.Info("Receiving message from consumer", slog.String("subject", msg.Subject()))
+	popts := process.Options()
+	ap := process.State.(*AggregateProcess)
+	aopts := ap.options
+
+	popts.Logger.Info("Aggregate receiving message from consumer",
+		slog.String("aggregate", aopts.AggregateName),
+		slog.String("subject", msg.Subject()),
+	)
+
+	p := process.State.(*AggregateProcess)
+	behavior := p.Behavior().(AggregateBehavior)
 
 	var event cloudevents.Event
 	err := json.Unmarshal(msg.Data(), &event)
 	if err != nil {
-		fmt.Println(err)
+		popts.Logger.Error("Failed to unmarshal cloud event", slog.Any("error", err))
 		_ = msg.Nak()
 		return gen.ServerStatusOK
 	}
-	p := process.State.(*AggregateProcess)
-	behavior := p.Behavior().(AggregateBehavior)
 
 	entityKey := event.Extensions()[extensionEntityKey].(string)
 
 	existingState, err := LoadState(p.options.Connection, &p.options, entityKey)
 	if err != nil {
-		fmt.Println(err)
+		popts.Logger.Error("Failed to load state",
+			slog.Any("error", err),
+			slog.String("entity_key", entityKey),
+		)
 		_ = msg.Nak()
 		return gen.ServerStatusOK
 	}
 
 	newState, err := behavior.ApplyEvent(p, *existingState, event)
 	if err != nil {
-		fmt.Println(err)
+		popts.Logger.Error("Failed to apply event",
+			slog.Any("error", err),
+			slog.String("event", event.Type()),
+			slog.String("entity_key", entityKey),
+		)
 		_ = msg.Nak()
 		return gen.ServerStatusOK
 	}
 
 	err = StoreState(p.options.Connection, &p.options, entityKey, newState)
 	if err != nil {
-		fmt.Println(err)
+		popts.Logger.Error("Failed to store state",
+			slog.Any("error", err),
+			slog.String("entity_key", entityKey),
+		)
 		_ = msg.Nak()
 		return gen.ServerStatusOK
 	}
