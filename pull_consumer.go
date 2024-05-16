@@ -25,6 +25,7 @@ type PullConsumer struct {
 type PullConsumerOptions struct {
 	Logger             *slog.Logger
 	Connection         *nats.Conn
+	JsDomain           string
 	StreamName         string
 	NatsConsumerConfig jetstream.ConsumerConfig
 }
@@ -104,6 +105,7 @@ func (c *PullConsumer) HandleCast(
 	p := process.State.(*PullConsumerProcess)
 	err := behavior.HandleMessage(p, message.(jetstream.Msg))
 	if err != nil {
+		p.options.Logger.Error("Failed to handle cast", slog.Any("error", err))
 		// dispatch / log error
 	}
 
@@ -126,9 +128,8 @@ func (process *PullConsumerProcess) startPulling() {
 
 	//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	ctx := context.Background()
-	nc := process.options.Connection
 	streamName := process.options.StreamName
-	js, _ := jetstream.New(nc)
+	js, _ := GetJetStream(process)
 
 	stream, err := js.Stream(ctx, streamName)
 	if err != nil {
@@ -154,4 +155,17 @@ func (process *PullConsumerProcess) startPulling() {
 
 func (opts PullConsumerOptions) validate() error {
 	return nil
+}
+
+func GetJetStream(process *PullConsumerProcess) (jetstream.JetStream, error) {
+	var js jetstream.JetStream
+	var err error
+
+	if process.options.JsDomain != "" {
+		js, err = jetstream.New(process.options.Connection)
+	} else {
+		js, err = jetstream.NewWithDomain(process.options.Connection, process.options.JsDomain)
+	}
+
+	return js, err
 }

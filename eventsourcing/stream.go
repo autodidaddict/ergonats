@@ -14,13 +14,20 @@ import (
 func writeEvents(conn *nats.Conn,
 	streamName string,
 	eventSubjectPrefix string,
+	jsDomain string,
 	events []cloudevents.Event) error {
 	var err error
 
 	ctx, cancelF := context.WithTimeout(context.Background(), bucketTimeout)
 	defer cancelF()
 
-	js, err := jetstream.New(conn)
+	var js jetstream.JetStream
+	if len(jsDomain) == 0 {
+		js, err = jetstream.New(conn)
+	} else {
+		js, err = jetstream.NewWithDomain(conn, jsDomain)
+	}
+
 	if err != nil {
 		return err
 	}

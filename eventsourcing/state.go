@@ -71,7 +71,15 @@ func StoreState(nc *nats.Conn, opts *AggregateOptions, key string, state Aggrega
 }
 
 func getOrCreateBucket(ctx context.Context, nc *nats.Conn, opts *AggregateOptions) (jetstream.KeyValue, error) {
-	js, err := jetstream.New(nc)
+	var js jetstream.JetStream
+	var err error
+
+	if len(opts.JsDomain) == 0 {
+		js, err = jetstream.New(nc)
+	} else {
+		js, err = jetstream.NewWithDomain(nc, opts.JsDomain)
+	}
+
 	if err != nil {
 		return nil, err
 	}

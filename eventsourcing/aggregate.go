@@ -37,6 +37,7 @@ type AggregateProcess struct {
 type AggregateOptions struct {
 	Logger               *slog.Logger
 	Connection           *nats.Conn
+	JsDomain             string
 	ServiceVersion       string
 	CommandSubjectPrefix string
 	EventSubjectPrefix   string
@@ -104,6 +105,7 @@ func (a *Aggregate) InitPullConsumer(
 	return &ergonats.PullConsumerOptions{
 		Logger:     aggregateOpts.Logger,
 		Connection: aggregateOpts.Connection,
+		JsDomain:   aggregateOpts.JsDomain,
 		StreamName: aggregateOpts.StreamName,
 		NatsConsumerConfig: jetstream.ConsumerConfig{
 			Durable:     consumerName,
@@ -256,6 +258,7 @@ func (a *Aggregate) writeEvents(process *AggregateProcess, events []cloudevents.
 	return writeEvents(process.options.Connection,
 		process.options.StreamName,
 		process.options.EventSubjectPrefix,
+		process.options.JsDomain,
 		events)
 }
 
