@@ -64,10 +64,11 @@ func (b *BankAccountAggregate) ApplyEvent(
 
 		// WARNING: if the value of x-ergonats-entity-key doesn't match _exactly_ the
 		// AccountID below, your app won't behave the way you expect
-		state.Data = BankAccountState{
+		raw, _ := json.Marshal(BankAccountState{
 			AccountID: evt.AccountID,
 			Balance:   evt.Balance,
-		}
+		})
+		state.Data = raw
 	case eventTypeFundsDeposited:
 		var evt FundsDepositedEvent
 		err := event.DataAs(&evt)
@@ -75,14 +76,14 @@ func (b *BankAccountAggregate) ApplyEvent(
 			return state, err
 		}
 		var bankState BankAccountState
-		bytes, _ := json.Marshal(state.Data)
-		err = json.Unmarshal(bytes, &bankState)
+		err = json.Unmarshal(state.Data, &bankState)
 		if err != nil {
 			return state, err
 		}
 		bankState.Balance += evt.Amount
+		raw, _ := json.Marshal(bankState)
 
-		state.Data = bankState
+		state.Data = raw
 	}
 
 	return state, nil

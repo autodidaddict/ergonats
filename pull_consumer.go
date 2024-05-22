@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/ergo-services/ergo/etf"
 	"github.com/ergo-services/ergo/gen"
@@ -129,7 +130,14 @@ func (process *PullConsumerProcess) startPulling() {
 	//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	ctx := context.Background()
 	streamName := process.options.StreamName
-	js, _ := GetJetStream(process)
+	js, err := GetJetStream(process)
+	if err != nil {
+		process.options.Logger.Error("Failed to attach to JetStream",
+			slog.String("stream", streamName),
+			slog.Any("error", err),
+		)
+		return
+	}
 
 	stream, err := js.Stream(ctx, streamName)
 	if err != nil {
@@ -137,6 +145,7 @@ func (process *PullConsumerProcess) startPulling() {
 			slog.String("stream", streamName),
 			slog.Any("error", err),
 		)
+		return
 	}
 
 	cons, err := stream.CreateOrUpdateConsumer(ctx, process.options.NatsConsumerConfig)
@@ -145,6 +154,7 @@ func (process *PullConsumerProcess) startPulling() {
 			slog.String("consumer", process.options.NatsConsumerConfig.Name),
 			slog.Any("error", err),
 		)
+		return
 	}
 
 	_, _ = cons.Consume(func(msg jetstream.Msg) {
@@ -161,10 +171,11 @@ func GetJetStream(process *PullConsumerProcess) (jetstream.JetStream, error) {
 	var js jetstream.JetStream
 	var err error
 
-	if process.options.JsDomain != "" {
+	domain := strings.TrimSpace(process.options.JsDomain)
+	if len(domain) == 0 {
 		js, err = jetstream.New(process.options.Connection)
 	} else {
-		js, err = jetstream.NewWithDomain(process.options.Connection, process.options.JsDomain)
+		js, err = jetstream.NewWithDomain(process.options.Connection, domain)
 	}
 
 	return js, err

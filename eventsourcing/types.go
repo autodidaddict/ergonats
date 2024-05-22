@@ -1,6 +1,7 @@
 package eventsourcing
 
 import (
+	"encoding/json"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go"
@@ -13,9 +14,9 @@ const (
 )
 
 type AggregateState struct {
-	Version uint64      `json:"version"`
-	Key     string      `json:"key"`
-	Data    interface{} `json:"data,omitempty"`
+	Version uint64          `json:"version"`
+	Key     string          `json:"key"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 type Command struct {

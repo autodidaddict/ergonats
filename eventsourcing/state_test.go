@@ -2,37 +2,88 @@ package eventsourcing
 
 import (
 	"encoding/json"
-	"fmt"
+	"log/slog"
 	"testing"
+
+	"github.com/nats-io/nats-server/v2/server"
+	"github.com/nats-io/nats.go"
 )
+
+type bankState struct {
+	Balance       int
+	AccountNumber string
+}
 
 // Verify that we can round-trip the interface{} Data field in
 // the state envelope
 func TestTypedState(t *testing.T) {
-	type bankState struct {
-		Balance       int
-		AccountNumber string
-	}
+
+	shutdown, nc := startNatsServer(t)
+	defer shutdown()
+
+	raw, _ := json.Marshal(bankState{
+		Balance:       500,
+		AccountNumber: "TESTONE",
+	})
 
 	state := AggregateState{
 		Version: 1,
 		Key:     "testing",
-		Data: bankState{
-			Balance:       500,
-			AccountNumber: "TESTONE",
-		},
+		Data:    raw,
 	}
 
-	bytes, _ := json.Marshal(state)
+	opts := &AggregateOptions{
+		Logger:               slog.Default(),
+		Connection:           nc,
+		ServiceVersion:       "0.0.1",
+		CommandSubjectPrefix: "test.cmds",
+		EventSubjectPrefix:   "test.events",
+		StreamName:           "supertest",
+		AcceptedCommands:     []string{},
+		StateStoreBucketName: "TEST_SUPER",
+		AggregateName:        "testing",
+		Middleware:           []AggregateMiddleware{},
+	}
 
-	var targetState AggregateState
-	_ = json.Unmarshal(bytes, &targetState)
+	err := StoreState(nc, opts, "TESTONE", state)
 
-	fmt.Printf("%+v\n", targetState)
+	if err != nil {
+		t.Fatalf("should have stored state cleanly but didn't: %s", err)
+	}
 
-	bytes2, _ := json.Marshal(state.Data)
-	var bs bankState
-	_ = json.Unmarshal(bytes2, &bs)
-	fmt.Printf("%+v\n", bs)
+	state2, err := LoadState(nc, opts, "TESTONE")
+	if err != nil {
+		t.Fatalf("should have loaded state cleanly but didn't: %s", err)
+	}
 
+	var bankState2 bankState
+	err = json.Unmarshal(state2.Data, &bankState2)
+	if err != nil {
+		t.Fatalf("Should've unmarshaled state but didn't: %s", err)
+	}
+
+	if bankState2.AccountNumber != "TESTONE" {
+		t.Fatalf("didn't round trip state properly: %+v", bankState2)
+	}
+
+}
+
+func startNatsServer(t *testing.T) (func(), *nats.Conn) {
+	t.Helper()
+	opts := &server.Options{
+		JetStream: true,
+		Port:      -1,
+	}
+	s, err := server.NewServer(opts)
+	if err != nil {
+		server.PrintAndDie("nats-server: " + err.Error())
+	}
+	s.ConfigureLogger()
+	if err := server.Run(s); err != nil {
+		server.PrintAndDie(err.Error())
+	}
+
+	go s.WaitForShutdown()
+	nc, _ := nats.Connect(s.ClientURL())
+	return s.Shutdown, nc
 }
