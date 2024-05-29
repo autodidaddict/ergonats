@@ -35,17 +35,19 @@ type AggregateProcess struct {
 }
 
 type AggregateOptions struct {
-	Logger               *slog.Logger
-	Connection           *nats.Conn
-	JsDomain             string
-	ServiceVersion       string
-	CommandSubjectPrefix string
-	EventSubjectPrefix   string
-	StreamName           string
-	AcceptedCommands     []string
-	StateStoreBucketName string
-	AggregateName        string
-	Middleware           []AggregateMiddleware
+	Logger                 *slog.Logger
+	Connection             *nats.Conn
+	JsDomain               string
+	ServiceVersion         string
+	CommandSubjectPrefix   string
+	EventSubjectPrefix     string
+	StreamName             string
+	AcceptedCommands       []string
+	StateStoreBucketName   string
+	StateStoreMaxValueSize int
+	StateStoreMaxBytes     int
+	AggregateName          string
+	Middleware             []AggregateMiddleware
 }
 
 type AggregateMiddleware interface {
@@ -73,6 +75,15 @@ func (a *Aggregate) InitPullConsumer(
 	if aggregateOpts.ServiceVersion == "" {
 		aggregateOpts.ServiceVersion = "0.0.1"
 	}
+
+	// Set these to unlimited (-1) if not specified
+	if aggregateOpts.StateStoreMaxBytes == 0 {
+		aggregateOpts.StateStoreMaxBytes = -1
+	}
+	if aggregateOpts.StateStoreMaxValueSize == 0 {
+		aggregateOpts.StateStoreMaxValueSize = -1
+	}
+
 	if aggregateOpts.Logger == nil {
 		aggregateOpts.Logger = slog.Default()
 	}

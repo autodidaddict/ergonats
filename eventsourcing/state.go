@@ -89,8 +89,10 @@ func getOrCreateBucket(ctx context.Context, nc *nats.Conn, opts *AggregateOption
 	if err != nil {
 		if errors.Is(err, jetstream.ErrBucketNotFound) {
 			kv, err = js.CreateKeyValue(ctx, jetstream.KeyValueConfig{
-				Bucket:      opts.StateStoreBucketName,
-				Description: fmt.Sprintf("Persisted state for %s aggregates", opts.AggregateName),
+				Bucket:       opts.StateStoreBucketName,
+				Description:  fmt.Sprintf("Persisted state for %s aggregates", opts.AggregateName),
+				MaxBytes:     int64(opts.StateStoreMaxBytes),
+				MaxValueSize: int32(opts.StateStoreMaxValueSize),
 			})
 			if err != nil {
 				return nil, err
