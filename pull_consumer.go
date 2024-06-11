@@ -74,12 +74,12 @@ func (c *PullConsumer) Init(
 	consumerOpts.Logger.Info("Initializing pull consumer", slog.Any("pid", process.Info().PID),
 		slog.String("process_name", process.Name()))
 
+	consumerProcess.options = *consumerOpts
+	process.State = consumerProcess
+
 	// Initialize the Nats consumer based on consumerOpts
 	go consumerProcess.startPulling()
 
-	consumerProcess.options = *consumerOpts
-
-	process.State = consumerProcess
 	return nil
 }
 
