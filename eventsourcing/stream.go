@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go"
 	"github.com/nats-io/nats.go"
@@ -37,7 +38,7 @@ func writeEvents(conn *nats.Conn,
 		if errors.Is(err, jetstream.ErrStreamNotFound) {
 			_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 				Name:     streamName,
-				Subjects: []string{fmt.Sprintf("%s.*", eventSubjectPrefix)},
+				Subjects: []string{fmt.Sprintf("%s.>", eventSubjectPrefix)},
 			})
 			if err != nil {
 				return err
@@ -48,12 +49,23 @@ func writeEvents(conn *nats.Conn,
 	}
 
 	for _, event := range events {
+		outSubject := eventSubject(eventSubjectPrefix, event)
 		bytes, _ := json.Marshal(event)
-		err = conn.Publish(fmt.Sprintf("%s.%s", eventSubjectPrefix, event.Type()), bytes)
+		err = conn.Publish(outSubject, bytes)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func eventSubject(prefix string, event cloudevents.Event) string {
+	outSubject := fmt.Sprintf("%s.%s", prefix, event.Type())
+	if ext, ok := event.Extensions()[extensionEntityKey]; ok {
+		ek := strings.ReplaceAll(ext.(string), "_", ".")
+		outSubject = fmt.Sprintf("%s.%s.%s", prefix, ek, event.Type())
+	}
+
+	return outSubject
 }
