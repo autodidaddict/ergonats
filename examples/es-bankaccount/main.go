@@ -24,7 +24,7 @@ func main() {
 
 	_, _ = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     bankStream,
-		Subjects: []string{"examples.bank.events.*"},
+		Subjects: []string{"examples.bank.events.>"},
 	})
 
 	logger := slog.Default()
