@@ -66,6 +66,19 @@ func TestTypedState(t *testing.T) {
 		t.Fatalf("didn't round trip state properly: %+v", bankState2)
 	}
 
+	err = DeleteState(nc, opts, "TESTONE")
+	if err != nil {
+		t.Fatalf("couldn't delete state properly: %s", err)
+	}
+
+	state3, err := LoadState(nc, opts, "TESTONE")
+	if err != nil {
+		t.Fatalf("shouldn't have gotten an error retrieving non-existent state: %s", err)
+	}
+	if state3.Version != 0 || state3.Data != nil {
+		t.Fatalf("didn't get an empty state: %+v", state3)
+	}
+
 }
 
 func startNatsServer(t *testing.T) (func(), *nats.Conn) {
