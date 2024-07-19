@@ -5,9 +5,11 @@ const (
 
 	commandTypeCreateAccount = "create_account"
 	commandTypeDeposit       = "deposit"
+	commandTypeDelete        = "delete_account"
 
 	eventTypeAccountCreated = "account_created"
 	eventTypeFundsDeposited = "funds_deposited"
+	eventTypeAccountDeleted = "account_deleted"
 )
 
 type BankAccountState struct {
@@ -18,6 +20,10 @@ type BankAccountState struct {
 type CreateAccountCommand struct {
 	AccountID      string `json:"account_id"`
 	InitialBalance uint64 `json:"initial_balance"`
+}
+
+type DeleteAccountCommand struct {
+	AccountID string `json:"account_id"`
 }
 
 type DepositFundsCommand struct {

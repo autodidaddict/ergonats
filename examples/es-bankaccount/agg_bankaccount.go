@@ -13,6 +13,8 @@ import (
 
 type BankAccountAggregate struct {
 	es.Aggregate
+
+	logger *slog.Logger
 }
 
 func (b *BankAccountAggregate) InitAggregate(
@@ -26,6 +28,8 @@ func (b *BankAccountAggregate) InitAggregate(
 		logger = args[1].(*slog.Logger)
 	}
 
+	b.logger = logger
+
 	logger.Info("Initializing bank account aggregate")
 
 	return es.AggregateOptions{
@@ -36,6 +40,7 @@ func (b *BankAccountAggregate) InitAggregate(
 		AcceptedCommands: []string{
 			commandTypeCreateAccount,
 			commandTypeDeposit,
+			commandTypeDelete,
 		},
 		CommandSubjectPrefix: "examples.bank.cmds",
 		EventSubjectPrefix:   "examples.bank.events",
@@ -50,14 +55,15 @@ func (b *BankAccountAggregate) InitAggregate(
 func (b *BankAccountAggregate) ApplyEvent(
 	process *es.AggregateProcess,
 	state es.AggregateState,
-	event cloudevents.Event) (es.AggregateState, error) {
+	event cloudevents.Event) (*es.AggregateState, error) {
 
+	b.logger.Info("Applying event", slog.String("event_type", event.Type()))
 	switch event.Type() {
 	case eventTypeAccountCreated:
 		var evt AccountCreatedEvent
 		err := event.DataAs(&evt)
 		if err != nil {
-			return state, err
+			return &state, err
 		}
 		// Note that state.Key is not modified here as that comes from
 		// the header on the stored message/event.
@@ -73,20 +79,22 @@ func (b *BankAccountAggregate) ApplyEvent(
 		var evt FundsDepositedEvent
 		err := event.DataAs(&evt)
 		if err != nil {
-			return state, err
+			return &state, err
 		}
 		var bankState BankAccountState
 		err = json.Unmarshal(state.Data, &bankState)
 		if err != nil {
-			return state, err
+			return &state, err
 		}
 		bankState.Balance += evt.Amount
 		raw, _ := json.Marshal(bankState)
 
 		state.Data = raw
+	case eventTypeAccountDeleted:
+		return nil, nil
 	}
 
-	return state, nil
+	return &state, nil
 }
 
 func (b *BankAccountAggregate) HandleCommand(
@@ -99,9 +107,23 @@ func (b *BankAccountAggregate) HandleCommand(
 		return createAccount(cmd, &state)
 	case commandTypeDeposit:
 		return deposit(cmd, state)
+	case commandTypeDelete:
+		return delete(cmd, &state)
 	default:
 		return nil, errors.New("unexpected command type")
 	}
+}
+
+func delete(cmd es.Command, _ *es.AggregateState) ([]cloudevents.Event, error) {
+	var deleteCommand DeleteAccountCommand
+	err := json.Unmarshal(cmd.Data, &deleteCommand)
+	if err != nil {
+		return nil, err
+	}
+
+	return []cloudevents.Event{
+		es.NewCloudEvent(eventTypeAccountDeleted, deleteCommand.AccountID, nil),
+	}, nil
 }
 
 func deposit(cmd es.Command, state es.AggregateState) ([]cloudevents.Event, error) {

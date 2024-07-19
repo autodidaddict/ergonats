@@ -45,6 +45,26 @@ func LoadState(nc *nats.Conn, opts *AggregateOptions, key string) (*AggregateSta
 	return &existingState, nil
 }
 
+func DeleteState(nc *nats.Conn, opts *AggregateOptions, key string) error {
+	ctx, cancelF := context.WithTimeout(context.Background(), bucketTimeout)
+	defer cancelF()
+
+	kv, err := getOrCreateBucket(ctx, nc, opts)
+	if err != nil {
+		return err
+	}
+
+	err = kv.Delete(ctx, key)
+	if err != nil {
+		return err
+	}
+	err = kv.PurgeDeletes(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 func StoreState(nc *nats.Conn, opts *AggregateOptions, key string, state AggregateState) error {
 	ctx, cancelF := context.WithTimeout(context.Background(), bucketTimeout)
 	defer cancelF()

@@ -19,7 +19,7 @@ type AggregateBehavior interface {
 	ergonats.PullConsumerBehavior
 
 	InitAggregate(process *AggregateProcess, args ...etf.Term) (AggregateOptions, error)
-	ApplyEvent(process *AggregateProcess, state AggregateState, event cloudevents.Event) (AggregateState, error)
+	ApplyEvent(process *AggregateProcess, state AggregateState, event cloudevents.Event) (*AggregateState, error)
 	HandleCommand(process *AggregateProcess, state AggregateState, cmd Command) ([]cloudevents.Event, error)
 }
 
@@ -250,15 +250,28 @@ func (a *Aggregate) HandleMessage(process *ergonats.PullConsumerProcess, msg jet
 		_ = msg.Nak()
 		return gen.ServerStatusOK
 	}
-
-	err = StoreState(p.options.Connection, &p.options, entityKey, newState)
-	if err != nil {
-		popts.Logger.Error("Failed to store state",
-			slog.Any("error", err),
-			slog.String("entity_key", entityKey),
-		)
-		_ = msg.Nak()
-		return gen.ServerStatusOK
+	// check if the aggregate requested a delete
+	if newState == nil {
+		popts.Logger.Info("Deleting aggregate", slog.String("key", entityKey))
+		err = DeleteState(p.options.Connection, &p.options, entityKey)
+		if err != nil {
+			popts.Logger.Error("Failed to delete state",
+				slog.Any("error", err),
+				slog.String("entity_key", entityKey),
+			)
+			_ = msg.Nak()
+			return gen.ServerStatusOK
+		}
+	} else {
+		err = StoreState(p.options.Connection, &p.options, entityKey, *newState)
+		if err != nil {
+			popts.Logger.Error("Failed to store state",
+				slog.Any("error", err),
+				slog.String("entity_key", entityKey),
+			)
+			_ = msg.Nak()
+			return gen.ServerStatusOK
+		}
 	}
 
 	_ = msg.Ack()
