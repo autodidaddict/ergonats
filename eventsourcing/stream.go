@@ -63,7 +63,7 @@ func writeEvents(conn *nats.Conn,
 func eventSubject(prefix string, event cloudevents.Event) string {
 	outSubject := fmt.Sprintf("%s.%s", prefix, event.Type())
 	if ext, ok := event.Extensions()[extensionEntityKey]; ok {
-		ek := strings.ReplaceAll(ext.(string), "_", ".")
+		ek := strings.ReplaceAll(ext.(string), ".", "_")
 		outSubject = fmt.Sprintf("%s.%s.%s", prefix, ek, event.Type())
 	}
 
